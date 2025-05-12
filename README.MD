@@ -4,4 +4,9 @@ Compile using `make`. Then run the binary under the bin/ directory. This does no
 feature cut and paste, but it does work as a very fast terminal emulator. A nicer 
 terminal than Xterm for example.
 
+Simple libraries required.
+
+dnf install gtk3-devel vte291-devel
+
+This is a very fast and stable terminal emulator focused on speed rather than bloat.
 
