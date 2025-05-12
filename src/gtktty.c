@@ -29,6 +29,8 @@
 #include <vte/vte.h>
 #include <stdlib.h>
 #include <string.h>
+#include <pwd.h>
+#include <unistd.h>
 
 // Function declarations for copy-paste operations
 static void copy_text(GtkWidget *widget, gpointer data);
@@ -41,6 +43,7 @@ static void show_command_builder(GtkWidget *widget, gpointer data);
 static void on_command_type_changed(GtkComboBox *combo, gpointer data);
 static void on_build_command(GtkWidget *widget, gpointer data);
 static void update_preview(GtkWidget *widget, gpointer data);
+static void update_window_title(VteTerminal *terminal, gpointer data);
 
 // Structure to hold command builder dialog widgets
 typedef struct {
@@ -53,6 +56,13 @@ typedef struct {
     GtkWidget *output_format_entry;
     VteTerminal *terminal;
 } CommandBuilderData;
+
+// Structure to hold window data
+typedef struct {
+    GtkWindow *window;
+    char *username;
+    char *hostname;
+} WindowData;
 
 static void on_window_destroy(GtkWidget *widget, gpointer data) {
     gtk_main_quit();
@@ -100,6 +110,10 @@ static gboolean on_key_press(GtkWidget *widget, GdkEventKey *event, gpointer dat
     return FALSE;
 }
 
+/* Showing the context menu.
+ * This is the copy-paste context menu
+ */
+
 static void show_context_menu(GtkWidget *widget, GdkEventButton *event, gpointer data) { /* Context menu */
     if (event->type == GDK_BUTTON_PRESS && event->button == GDK_BUTTON_SECONDARY) {
         GtkWidget *menu = gtk_menu_new();
@@ -125,11 +139,28 @@ static void show_context_menu(GtkWidget *widget, GdkEventButton *event, gpointer
 }
 
 static void setup_environment() {
-    // Set PROMPT_COMMAND to display its output before each prompt
-    g_setenv("PROMPT_COMMAND", "printf \"\\033]0;${USER}@${HOSTNAME}:${PWD}\\007\"", TRUE);
+    // Get username and hostname
+    struct passwd *pw = getpwuid(getuid());
+    char hostname[256];
+    gethostname(hostname, sizeof(hostname));
     
-    // Alternatively, to both keep existing PROMPT_COMMAND and display its output:
-    // g_setenv("PROMPT_COMMAND", "existing_command; printf \"\\nPROMPT_COMMAND OUTPUT: $(existing_command)\\n\"", TRUE);
+    // Set PROMPT_COMMAND to update window title
+    char *prompt_cmd = g_strdup_printf(
+        "printf \"\\033]0;%s@%s\\007\"",
+        pw->pw_name,
+        hostname
+    );
+    g_setenv("PROMPT_COMMAND", prompt_cmd, TRUE);
+    g_free(prompt_cmd);
+}
+
+static void update_window_title(VteTerminal *terminal, gpointer data) {
+    WindowData *window_data = (WindowData *)data;
+    char *title = g_strdup_printf("%s@%s - Gterm | v0.2", 
+        window_data->username, 
+        window_data->hostname);
+    gtk_window_set_title(window_data->window, title);
+    g_free(title);
 }
 
 static void show_command_builder(GtkWidget *widget, gpointer data) { /* Command builder dialog */
@@ -247,7 +278,7 @@ static void on_command_type_changed(GtkComboBox *combo, gpointer data) {
     const char *command_type = gtk_combo_box_text_get_active_text(
         GTK_COMBO_BOX_TEXT(builder_data->command_type_combo));
 
-    if (strcmp(command_type, "grep") == 0) {
+    if (strcmp(command_type, "grep") == 0) { /* Building a grep command is a special case in this instance. */
         // Add grep-specific options
         GtkWidget *case_sensitive = gtk_check_button_new_with_label("Case sensitive");
         gtk_box_pack_start(GTK_BOX(options_box), case_sensitive, FALSE, FALSE, 0);
@@ -356,13 +387,28 @@ int main(int argc, char *argv[]) {
     GtkWidget *menu;
     GtkWidget *menu_item;
     char **command;
+    WindowData *window_data;
 
     // Initialize GTK
     gtk_init(&argc, &argv);
 
+    // Get username and hostname
+    struct passwd *pw = getpwuid(getuid());
+    char hostname[256];
+    gethostname(hostname, sizeof(hostname));
+
+    // Create window data structure
+    window_data = g_malloc(sizeof(WindowData));
+    window_data->username = g_strdup(pw->pw_name);
+    window_data->hostname = g_strdup(hostname);
+
     // Create main window
     window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
-    gtk_window_set_title(GTK_WINDOW(window), "Gterm | v0.1 ");
+    window_data->window = GTK_WINDOW(window);
+    
+    // Set initial window title
+    update_window_title(NULL, window_data);
+    
     gtk_window_set_default_size(GTK_WINDOW(window), 1024, 768);
     gtk_window_set_icon_from_file(GTK_WINDOW(window), "/usr/share/icons/hicolor/24x24/apps/gtk3-demo.png", NULL);
 
@@ -370,6 +416,10 @@ int main(int argc, char *argv[]) {
 
     // Create VTE terminal widget
     terminal = vte_terminal_new();
+
+    // Connect to title-change signal
+    g_signal_connect(terminal, "window-title-changed",
+        G_CALLBACK(update_window_title), window_data);
 
     // Add right-click context menu
     g_signal_connect(terminal, "button-press-event", G_CALLBACK(show_context_menu), terminal);
@@ -466,6 +516,11 @@ int main(int argc, char *argv[]) {
 
     // Start GTK main loop
     gtk_main();
+
+    // Clean up window data before exit
+    g_free(window_data->username);
+    g_free(window_data->hostname);
+    g_free(window_data);
 
     return 0;
 }
