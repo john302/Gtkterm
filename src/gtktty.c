@@ -121,30 +121,33 @@ static void show_context_menu(GtkWidget *widget, GdkEventButton *event, gpointer
         GtkWidget *paste_item = gtk_menu_item_new_with_label("Paste");
         GtkWidget *select_all_item = gtk_menu_item_new_with_label("Select All");
         GtkWidget *clear_item = gtk_menu_item_new_with_label("Clear");
-        
+
         g_signal_connect(copy_item, "activate", G_CALLBACK(copy_text), data);
         g_signal_connect(paste_item, "activate", G_CALLBACK(paste_text), data);
         g_signal_connect(select_all_item, "activate", G_CALLBACK(select_all), data);
         g_signal_connect(clear_item, "activate", G_CALLBACK(clear_terminal), data);
-        
+
         gtk_menu_shell_append(GTK_MENU_SHELL(menu), copy_item);
         gtk_menu_shell_append(GTK_MENU_SHELL(menu), paste_item);
         gtk_menu_shell_append(GTK_MENU_SHELL(menu), gtk_separator_menu_item_new());
         gtk_menu_shell_append(GTK_MENU_SHELL(menu), select_all_item);
         gtk_menu_shell_append(GTK_MENU_SHELL(menu), clear_item);
-        
+
         gtk_widget_show_all(menu);
         gtk_menu_popup_at_pointer(GTK_MENU(menu), (GdkEvent*)event);
     }
 }
 
-static void setup_environment() {
+static void setup_environment() { /* Setup the environment */
     // Get username and hostname
     struct passwd *pw = getpwuid(getuid());
     char hostname[256];
     gethostname(hostname, sizeof(hostname));
-    
-    // Set PROMPT_COMMAND to update window title
+
+    /* Set PROMPT_COMMAND to update window title This is to print 
+     * the username and hostname in the window title.
+     * This is kind of necessary.
+     */
     char *prompt_cmd = g_strdup_printf(
         "printf \"\\033]0;%s@%s\\007\"",
         pw->pw_name,
